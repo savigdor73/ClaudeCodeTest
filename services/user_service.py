@@ -64,6 +64,7 @@ async def update_user(
     role: Optional[str] = None,
     is_active: Optional[bool] = None,
     password: Optional[str] = None,
+    theme: Optional[str] = None,
 ) -> Optional[User]:
     user = await get_user_by_id(db, user_id)
     if not user:
@@ -82,6 +83,9 @@ async def update_user(
     if password is not None:
         user.hashed_password = hash_password(password)
         changes["password"] = "changed"
+    if theme is not None:
+        user.theme = theme
+        changes["theme"] = theme
 
     log = AuditLog(
         user_id=updated_by_id,

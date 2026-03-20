@@ -14,6 +14,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="staff")  # admin/manager/staff
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    theme: Mapped[str] = mapped_column(String(20), nullable=False, default="blue", server_default="blue")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

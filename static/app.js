@@ -21,6 +21,53 @@ const store = {
   },
 };
 
+// ── Theme ─────────────────────────────────────────────────
+const THEMES = [
+  { id: 'blue',    label: 'Blue',    color: '#0d6efd' },
+  { id: 'slate',   label: 'Slate',   color: '#6366f1' },
+  { id: 'emerald', label: 'Emerald', color: '#10b981' },
+  { id: 'violet',  label: 'Violet',  color: '#8b5cf6' },
+  { id: 'sunset',  label: 'Sunset',  color: '#f97316' },
+];
+
+function getThemeKey() {
+  const user = store.user;
+  return user ? `theme_${user.id}` : 'theme_guest';
+}
+
+function applyTheme(themeId, persist = true) {
+  const html = document.documentElement;
+  if (themeId && themeId !== 'blue') {
+    html.setAttribute('data-theme', themeId);
+  } else {
+    html.removeAttribute('data-theme');
+  }
+
+  if (persist) {
+    // Cache locally
+    localStorage.setItem(getThemeKey(), themeId || 'blue');
+
+    // Save to DB (fire-and-forget)
+    const user = store.user;
+    if (user) {
+      apiFetch(`/api/users/${user.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ theme: themeId }),
+      }).catch(() => {});
+      // Update cached user object so initTheme() reads correct value after reload
+      user.theme = themeId;
+      store.set(store.access, store.refresh, user);
+    }
+  }
+}
+
+function initTheme() {
+  const user = store.user;
+  // Prefer value from user object (set at login from DB), fall back to localStorage cache
+  const saved = user?.theme || localStorage.getItem(getThemeKey()) || 'blue';
+  applyTheme(saved, false);
+}
+
 // ── API helper ────────────────────────────────────────────
 async function apiFetch(path, options = {}, retry = true) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -231,6 +278,7 @@ function renderLogin() {
         errEl.classList.remove('d-none');
       } else {
         store.set(data.data.access_token, data.data.refresh_token, data.data.user);
+        initTheme();
         toast('Welcome back, ' + data.data.user.full_name);
         navigate('dashboard');
       }
@@ -679,17 +727,37 @@ async function renderProfile() {
 
 // ── Settings page ─────────────────────────────────────────
 function renderSettings() {
+  const current = localStorage.getItem(getThemeKey()) || 'blue';
   document.getElementById('router-outlet').innerHTML = `
     <div class="row justify-content-center">
       <div class="col-lg-6">
         <div class="card shadow-sm">
           <div class="card-body">
-            <h6 class="fw-semibold mb-3">Application Settings</h6>
-            <p class="text-muted small">Settings panel — coming soon.</p>
+            <h6 class="fw-semibold mb-1">Appearance</h6>
+            <p class="text-muted small mb-3">Choose your color theme. Saved per user on this device.</p>
+            <div class="d-flex flex-wrap gap-2" id="theme-picker">
+              ${THEMES.map(t => `
+                <button class="theme-swatch ${current === t.id ? 'active' : ''}"
+                        data-theme="${t.id}" title="${t.label}"
+                        style="--swatch-color:${t.color}">
+                  <span class="swatch-circle"></span>
+                  <span class="swatch-label">${t.label}</span>
+                </button>`).join('')}
+            </div>
           </div>
         </div>
       </div>
     </div>`;
+
+  document.getElementById('theme-picker').addEventListener('click', e => {
+    const btn = e.target.closest('[data-theme]');
+    if (!btn) return;
+    applyTheme(btn.dataset.theme);
+    document.querySelectorAll('#theme-picker .theme-swatch').forEach(b => {
+      b.classList.toggle('active', b === btn);
+    });
+    toast('Theme applied');
+  });
 }
 
 // ── Logout ────────────────────────────────────────────────
@@ -734,5 +802,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('sidebar').classList.remove('open');
   });
 
+  initTheme();
   handleRoute();
 });

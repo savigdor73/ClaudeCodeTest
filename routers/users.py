@@ -122,6 +122,7 @@ async def update_user(
         role=body.role,
         is_active=body.is_active,
         password=body.password,
+        theme=body.theme,
     )
     if not user:
         _err("User not found", 404)

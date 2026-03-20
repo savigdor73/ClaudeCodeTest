@@ -15,6 +15,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
+    theme: Optional[str] = None
 
 
 class UserResponse(BaseModel):

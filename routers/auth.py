@@ -91,6 +91,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
                 "email": user.email,
                 "full_name": user.full_name,
                 "role": user.role,
+                "theme": user.theme,
             },
         },
         "Login successful",
@@ -131,6 +132,7 @@ async def me(current_user: User = Depends(get_current_user)):
             "is_active": current_user.is_active,
             "created_at": current_user.created_at.isoformat(),
             "last_login": current_user.last_login.isoformat() if current_user.last_login else None,
+            "theme": current_user.theme,
         },
         "Profile retrieved",
     )
