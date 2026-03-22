@@ -52,3 +52,14 @@ def require_role(*roles: str):
 
 require_admin = require_role("admin")
 require_admin_or_manager = require_role("admin", "manager")
+
+
+async def require_pro(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role == "admin":
+        return current_user
+    if current_user.plan != "pro" or current_user.subscription_status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Pro subscription required",
+        )
+    return current_user

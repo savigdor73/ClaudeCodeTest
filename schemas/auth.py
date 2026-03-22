@@ -36,6 +36,8 @@ class UserProfileResponse(BaseModel):
     full_name: str
     role: str
     is_active: bool
+    plan: str
+    subscription_status: str
     created_at: datetime
     last_login: datetime | None
 

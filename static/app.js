@@ -147,6 +147,7 @@ const routes = {
   users:     renderUsers,
   profile:   renderProfile,
   settings:  renderSettings,
+  pricing:   renderPricing,
 };
 
 function navigate(route) {
@@ -207,6 +208,7 @@ const routeTitles = {
   users:     'User Management',
   profile:   'My Profile',
   settings:  'Settings',
+  pricing:   'Pricing & Plans',
 };
 function updateHeader(route) {
   const title = routeTitles[route] || route.charAt(0).toUpperCase() + route.slice(1);
@@ -356,6 +358,19 @@ function renderRegister() {
 // ── Dashboard page ────────────────────────────────────────
 async function renderDashboard() {
   const outlet = document.getElementById('router-outlet');
+  const user = store.user;
+
+  if (user?.role !== 'admin' && (user?.plan !== 'pro' || user?.subscription_status !== 'active')) {
+    outlet.innerHTML = `
+      <div class="card shadow-sm text-center p-5">
+        <i class="bi bi-lock-fill fs-1 text-muted mb-3"></i>
+        <h5 class="fw-bold">Pro Feature</h5>
+        <p class="text-muted">Dashboard stats and reports are available on the Pro plan.</p>
+        <a href="#pricing" class="btn btn-primary">View Plans</a>
+      </div>`;
+    return;
+  }
+
   outlet.innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
 
   const res  = await apiFetch('/api/dashboard/stats');
@@ -760,6 +775,133 @@ function renderSettings() {
   });
 }
 
+// ── Pricing page ──────────────────────────────────────────
+async function renderPricing() {
+  const outlet = document.getElementById('router-outlet');
+  const user = store.user;
+
+  // Fetch price IDs and Paddle config from server
+  let prices = {};
+  try {
+    const res = await apiFetch('/api/billing/config');
+    if (res?.ok) {
+      const d = await res.json();
+      prices = d.data.prices ?? {};
+      const clientToken = d.data.client_token;
+      const environment = d.data.environment;
+      if (clientToken && window.Paddle) {
+        if (environment === 'sandbox') window.Paddle.Environment.set('sandbox');
+        window.Paddle.Initialize({ token: clientToken });
+      }
+    }
+  } catch { /* proceed with empty prices — buttons will be disabled */ }
+
+  const plans = [
+    {
+      id: 'basic',
+      name: 'Basic',
+      color: 'info',
+      price: { monthly: '$9', yearly: '$90' },
+      priceId: { monthly: prices.basic_monthly ?? '', yearly: prices.basic_yearly ?? '' },
+      features: ['Up to 5 users', 'Core dashboard', 'Session management', 'Email support'],
+    },
+    {
+      id: 'pro',
+      name: 'Pro',
+      color: 'primary',
+      price: { monthly: '$29', yearly: '$290' },
+      priceId: { monthly: prices.pro_monthly ?? '', yearly: prices.pro_yearly ?? '' },
+      features: ['Unlimited users', 'Dashboard stats & reports', 'Audit log access', 'Priority support'],
+    },
+  ];
+
+  outlet.innerHTML = `
+    <div class="mb-4 text-center">
+      <div class="btn-group" role="group" id="billing-toggle">
+        <input type="radio" class="btn-check" name="billing" id="bill-monthly" value="monthly" checked />
+        <label class="btn btn-outline-primary" for="bill-monthly">Monthly</label>
+        <input type="radio" class="btn-check" name="billing" id="bill-yearly" value="yearly" />
+        <label class="btn btn-outline-primary" for="bill-yearly">Yearly <span class="badge bg-success ms-1">Save 17%</span></label>
+      </div>
+    </div>
+    <div class="row g-4 justify-content-center" id="plan-cards">
+      ${plans.map(p => `
+        <div class="col-md-5">
+          <div class="card shadow-sm h-100 ${user?.plan === p.id ? 'border-' + p.color : ''}">
+            <div class="card-body d-flex flex-column">
+              <h5 class="card-title fw-bold text-${p.color}">${p.name}</h5>
+              <div class="mb-3">
+                <span class="fs-2 fw-bold" id="price-${p.id}">${p.price.monthly}</span>
+                <span class="text-muted" id="period-${p.id}">/month</span>
+              </div>
+              <ul class="list-unstyled flex-grow-1">
+                ${p.features.map(f => `<li class="mb-1"><i class="bi bi-check-circle-fill text-success me-2"></i>${esc(f)}</li>`).join('')}
+              </ul>
+              ${user?.plan === p.id
+                ? `<span class="btn btn-outline-${p.color} disabled w-100 mt-3">Current Plan</span>`
+                : `<button class="btn btn-${p.color} w-100 mt-3" data-plan="${p.id}" data-price-monthly="${p.priceId.monthly}" data-price-yearly="${p.priceId.yearly}">Subscribe</button>`
+              }
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+
+  function updatePrices(period) {
+    plans.forEach(p => {
+      const priceEl = document.getElementById(`price-${p.id}`);
+      const periodEl = document.getElementById(`period-${p.id}`);
+      if (priceEl) priceEl.textContent = p.price[period];
+      if (periodEl) periodEl.textContent = period === 'yearly' ? '/year' : '/month';
+    });
+  }
+
+  document.querySelectorAll('input[name="billing"]').forEach(radio => {
+    radio.addEventListener('change', () => updatePrices(radio.value));
+  });
+
+  outlet.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-plan]');
+    if (!btn) return;
+    const period = document.querySelector('input[name="billing"]:checked')?.value || 'monthly';
+    const priceId = period === 'yearly' ? btn.dataset.priceYearly : btn.dataset.priceMonthly;
+    openCheckout(priceId, btn);
+  });
+}
+
+async function openCheckout(priceId, btn) {
+  if (!priceId) { toast('Plan not available yet', 'error'); return; }
+  if (!window.Paddle) { toast('Payment system not loaded', 'error'); return; }
+
+  // Validate price_id server-side before opening checkout
+  const res = await apiFetch('/api/billing/checkout', {
+    method: 'POST',
+    body: JSON.stringify({ price_id: priceId }),
+  });
+  if (!res || !res.ok) { toast('Could not start checkout', 'error'); return; }
+  const data = await res.json();
+
+  window.Paddle.Checkout.open({
+    items: [{ priceId: data.data.price_id, quantity: 1 }],
+    customData: { user_id: data.data.user_id },
+    settings: { displayMode: 'overlay', theme: 'light' },
+    eventCallback(event) {
+      if (event.name === 'checkout.completed') {
+        apiFetch('/api/billing/status').then(async r => {
+          if (r?.ok) {
+            const d = await r.json();
+            const u = store.user;
+            u.plan = d.data.plan;
+            u.subscription_status = d.data.subscription_status;
+            store.set(store.access, store.refresh, u);
+            toast('Subscription activated!');
+            navigate('dashboard');
+          }
+        });
+      }
+    },
+  });
+}
+
 // ── Logout ────────────────────────────────────────────────
 async function logout() {
   if (store.refresh && store.access) {
@@ -804,4 +946,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initTheme();
   handleRoute();
+
+  // Refresh subscription status when user returns from Paddle checkout tab
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && store.user?.plan === 'free') {
+      const res = await apiFetch('/api/billing/status').catch(() => null);
+      if (res?.ok) {
+        const d = await res.json();
+        if (d.data.plan !== 'free') {
+          const u = store.user;
+          u.plan = d.data.plan;
+          u.subscription_status = d.data.subscription_status;
+          store.set(store.access, store.refresh, u);
+          toast('Subscription activated!');
+          navigate('dashboard');
+        }
+      }
+    }
+  });
 });

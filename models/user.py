@@ -15,6 +15,10 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="staff")  # admin/manager/staff
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     theme: Mapped[str] = mapped_column(String(20), nullable=False, default="blue", server_default="blue")
+    plan: Mapped[str] = mapped_column(String(20), nullable=False, default="free", server_default="free")
+    subscription_status: Mapped[str] = mapped_column(String(30), nullable=False, default="none", server_default="none")
+    paddle_customer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    paddle_subscription_id: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
@@ -22,6 +26,7 @@ class User(Base):
 
     sessions: Mapped[list["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")  # noqa: F821
     audit_logs: Mapped[list["AuditLog"]] = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    subscriptions: Mapped[list["Subscription"]] = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")  # noqa: F821
 
 
 class AuditLog(Base):

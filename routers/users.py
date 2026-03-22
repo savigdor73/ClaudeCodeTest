@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 from datetime import datetime, timezone
 
 from database import get_db
-from middleware.auth_middleware import get_current_user, require_admin
+from middleware.auth_middleware import get_current_user, require_admin, require_pro
 from models.user import User
 from models.session import UserSession
 from schemas.user import UserCreate, UserUpdate
@@ -152,7 +152,7 @@ async def delete_user(
 @router.get("/dashboard/stats")
 async def dashboard_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_pro),
 ):
     total_users_result = await db.execute(select(func.count()).select_from(User))
     total_users = total_users_result.scalar_one()
